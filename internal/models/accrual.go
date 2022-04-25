@@ -1,4 +1,4 @@
-package accrual
+package models
 
 import (
 	"encoding/json"

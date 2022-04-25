@@ -11,19 +11,19 @@ type Worker struct {
 	Signal <-chan struct{}
 }
 
-func (pw *Worker) Run(ctx context.Context, store repository.Storage) {
+func (pw *Worker) Run(ctx context.Context, s repository.Storage) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-pw.Signal:
-			go UpdateOrder(ctx, store)
+			go UpdateOrder(ctx, s)
 		}
 	}
 }
 
-func UpdateOrder(ctx context.Context, store repository.Storage) {
-	if err := store.UpdateOrder(ctx); err != nil {
+func UpdateOrder(ctx context.Context, s repository.Storage) {
+	if err := s.UpdateOrder(ctx); err != nil {
 		log.Error().Err(err).Msg("failed to update registered order")
 	}
 }

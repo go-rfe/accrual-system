@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"accrual-system/internal/pkg/accrual"
+	"accrual-system/internal/models"
 	"context"
 	"database/sql"
 	"errors"
@@ -20,7 +20,7 @@ const (
 
 type Database struct {
 	conn  *sql.DB
-	cache map[string]accrual.Reward
+	cache map[string]models.Reward
 }
 
 func NewDBStorage(uri string) (*Database, error) {
@@ -33,7 +33,7 @@ func NewDBStorage(uri string) (*Database, error) {
 
 	db := Database{
 		conn:  conn,
-		cache: make(map[string]accrual.Reward),
+		cache: make(map[string]models.Reward),
 	}
 	db.conn.SetMaxIdleConns(maxIdleConns)
 
@@ -71,12 +71,12 @@ func NewDBStorage(uri string) (*Database, error) {
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
 		if err != nil {
-			log.Error().Err(err).Msgf("Couldn't close rows")
+			log.Error().Err(err).Msgf("couldn't close rows")
 		}
 	}(rewardsRows)
 
 	for rewardsRows.Next() {
-		var reward accrual.Reward
+		var reward models.Reward
 		err = rewardsRows.Scan(&reward.Match, &reward.Reward, &reward.RewardType)
 		if err != nil {
 			return nil, err
@@ -93,7 +93,7 @@ func NewDBStorage(uri string) (*Database, error) {
 	return &db, nil
 }
 
-func (db *Database) CreateOrder(ctx context.Context, order accrual.Order) error {
+func (db *Database) CreateOrder(ctx context.Context, order models.Order) error {
 	var existingOrder string
 	row := db.conn.QueryRowContext(ctx,
 		"SELECT number FROM orders WHERE number = $1", order.Order)
@@ -104,7 +104,7 @@ func (db *Database) CreateOrder(ctx context.Context, order accrual.Order) error 
 	}
 
 	if !errors.Is(err, sql.ErrNoRows) {
-		return accrual.ErrOrderExists
+		return models.ErrOrderExists
 	}
 
 	tx, err := db.conn.BeginTx(ctx, nil)
@@ -118,7 +118,7 @@ func (db *Database) CreateOrder(ctx context.Context, order accrual.Order) error 
 	}
 	defer func(stmt *sql.Stmt) {
 		if err := stmt.Close(); err != nil {
-			log.Error().Err(err).Msg("Failed to close insert statement")
+			log.Error().Err(err).Msg("failed to close insert statement")
 		}
 	}(stmtInsertOrder)
 
@@ -128,7 +128,7 @@ func (db *Database) CreateOrder(ctx context.Context, order accrual.Order) error 
 	}
 	defer func(stmt *sql.Stmt) {
 		if err := stmt.Close(); err != nil {
-			log.Error().Err(err).Msg("Failed to close insert statement")
+			log.Error().Err(err).Msg("failed to close insert statement")
 		}
 	}(stmtInsertGood)
 
@@ -157,9 +157,9 @@ func (db *Database) CreateOrder(ctx context.Context, order accrual.Order) error 
 	return nil
 }
 
-func (db *Database) GetOrder(ctx context.Context, orderID string) (*accrual.Order, error) {
+func (db *Database) GetOrder(ctx context.Context, orderID string) (*models.Order, error) {
 	var sum decimal.Decimal
-	order := accrual.Order{}
+	order := models.Order{}
 
 	row := db.conn.QueryRowContext(ctx,
 		"SELECT number,status,accrual FROM orders WHERE number = $1", orderID)
@@ -167,12 +167,12 @@ func (db *Database) GetOrder(ctx context.Context, orderID string) (*accrual.Orde
 	err := row.Scan(&order.Order, &order.Status, &sum)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return nil, accrual.ErrOrderDoesntExist
+		return nil, models.ErrOrderDoesntExist
 	case !errors.Is(err, nil):
 		return nil, err
 	}
 
-	_, ok := accrual.WithoutAccrualStatuses[order.Status]
+	_, ok := models.WithoutAccrualStatuses[order.Status]
 	if ok {
 		return &order, nil
 	}
@@ -181,7 +181,7 @@ func (db *Database) GetOrder(ctx context.Context, orderID string) (*accrual.Orde
 }
 
 // CreateReward creates pattern for goods
-func (db *Database) CreateReward(ctx context.Context, reward accrual.Reward) error {
+func (db *Database) CreateReward(ctx context.Context, reward models.Reward) error {
 	var existingOrder string
 	row := db.conn.QueryRowContext(ctx,
 		"SELECT match FROM rewards WHERE match = $1", reward.Match)
@@ -192,7 +192,7 @@ func (db *Database) CreateReward(ctx context.Context, reward accrual.Reward) err
 	}
 
 	if !errors.Is(err, sql.ErrNoRows) {
-		return accrual.ErrRewardExists
+		return models.ErrRewardExists
 	}
 
 	_, err = db.conn.ExecContext(ctx,
@@ -210,21 +210,21 @@ func (db *Database) CreateReward(ctx context.Context, reward accrual.Reward) err
 
 // UpdateOrder calculates rewards for the new one order
 func (db *Database) UpdateOrder(ctx context.Context) error {
-	order := accrual.Order{}
+	order := models.Order{}
 
 	row := db.conn.QueryRowContext(ctx,
-		"SELECT number FROM orders WHERE status = $1 LIMIT 1", accrual.RegisteredStatus)
+		"SELECT number FROM orders WHERE status = $1 LIMIT 1", models.RegisteredStatus)
 
 	err := row.Scan(&order.Order)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return accrual.ErrOrderDoesntExist
+		return models.ErrOrderDoesntExist
 	case err != nil:
 		return err
 	}
 
 	// Start processing order
-	order.Status = accrual.ProcessingStatus
+	order.Status = models.ProcessingStatus
 	if err := db.updateOrder(ctx, order); err != nil {
 		return err
 	}
@@ -247,10 +247,10 @@ func (db *Database) UpdateOrder(ctx context.Context) error {
 			}
 
 			switch reward.RewardType {
-			case accrual.PointsRewardType:
+			case models.PointsRewardType:
 				order.Accrual = order.Accrual.Add(reward.Reward)
-			case accrual.PercentsRewardType:
-				order.Accrual = order.Accrual.Add(price.Mul(reward.Reward).Div(decimal.NewFromInt(accrual.OneHundredPercents)))
+			case models.PercentsRewardType:
+				order.Accrual = order.Accrual.Add(price.Mul(reward.Reward).Div(decimal.NewFromInt(models.OneHundredPercents)))
 			}
 		}
 
@@ -259,15 +259,15 @@ func (db *Database) UpdateOrder(ctx context.Context) error {
 		}
 
 		if err := goodsRows.Close(); err != nil {
-			log.Error().Err(err).Msgf("Couldn't close rows")
+			log.Error().Err(err).Msgf("couldn't close rows")
 		}
 	}
 
 	// End processing order
 	if order.Accrual.Equal(decimal.Zero) {
-		order.Status = accrual.InvalidStatus
+		order.Status = models.InvalidStatus
 	} else {
-		order.Status = accrual.ProcessedStatus
+		order.Status = models.ProcessedStatus
 	}
 
 	if err := db.updateOrder(ctx, order); err != nil {
@@ -278,7 +278,7 @@ func (db *Database) UpdateOrder(ctx context.Context) error {
 }
 
 // updateOrder updates provided order in database inside transaction
-func (db *Database) updateOrder(ctx context.Context, order accrual.Order) error {
+func (db *Database) updateOrder(ctx context.Context, order models.Order) error {
 	tx, err := db.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err

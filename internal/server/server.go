@@ -1,7 +1,7 @@
 package server
 
 import (
-	repository2 "accrual-system/internal/repository"
+	repository "accrual-system/internal/repository"
 	"context"
 	"net/http"
 
@@ -14,15 +14,15 @@ import (
 type AccrualServer struct {
 	RunAddress  string
 	DatabaseURI string
-	Storage     repository2.Storage
+	Storage     repository.Storage
 	Signal      chan struct{}
 	context     context.Context
 	server      *http.Server
 }
 
 // initStorage Init database as a storage
-func initStorage(s *AccrualServer) repository2.Storage {
-	st, err := repository2.NewDBStorage(s.DatabaseURI)
+func initStorage(s *AccrualServer) repository.Storage {
+	st, err := repository.NewDBStorage(s.DatabaseURI)
 	if err != nil {
 		log.Error().Msgf("unable to init database: %s", err)
 	}
@@ -43,13 +43,11 @@ func (s *AccrualServer) Run(ctx context.Context) {
 	_ = r.SetTrustedProxies([]string{"127.0.0.1"})
 	r.HandleMethodNotAllowed = true
 	r.RedirectTrailingSlash = false
-	r.ForwardedByClientIP = true
 
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	r.Use(realip.RealIP())
 
 	r.GET("/api/orders/:number", limitMiddleware(), getOrderHandler(storage))
-	r.POST("/api/orders/", getOrderHandler(storage))
 	r.POST("/api/orders", updateOrdersHandler(storage, s.Signal))
 	r.POST("/api/goods", updateGoodsHandler(storage))
 

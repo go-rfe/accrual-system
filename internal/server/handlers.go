@@ -1,7 +1,7 @@
 package server
 
 import (
-	"accrual-system/internal/pkg/accrual"
+	"accrual-system/internal/models"
 	"accrual-system/internal/repository"
 	"context"
 	"encoding/json"
@@ -24,14 +24,14 @@ func getOrderHandler(store repository.Storage) gin.HandlerFunc {
 		defer cancel()
 
 		orderID := c.Param("number")
-		if err := accrual.ValidateOrder(orderID); err != nil {
+		if err := models.ValidateOrder(orderID); err != nil {
 			http.Error(c.Writer, fmt.Sprintf("bad order number: %s (%q)", orderID, err), http.StatusUnprocessableEntity)
 			return
 		}
 
 		order, err := store.GetOrder(ctx, orderID)
 		switch {
-		case errors.Is(err, accrual.ErrOrderDoesntExist):
+		case errors.Is(err, models.ErrOrderDoesntExist):
 			http.Error(c.Writer, "couldn't found order", http.StatusNotFound)
 			return
 
@@ -41,7 +41,7 @@ func getOrderHandler(store repository.Storage) gin.HandlerFunc {
 		}
 
 		c.Writer.Header().Set("Content-Type", "application/json")
-		err = accrual.WriteJSON(&order, c.Writer)
+		err = models.WriteJSON(&order, c.Writer)
 		if err != nil {
 			log.Error().Err(err).Msg("cannot send request")
 		}
@@ -53,21 +53,21 @@ func updateOrdersHandler(store repository.Storage, signal chan struct{}) gin.Han
 		createContext, createCancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 		defer createCancel()
 
-		var order accrual.Order
+		var order models.Order
 		err := json.NewDecoder(c.Request.Body).Decode(&order)
 		if err != nil {
 			http.Error(c.Writer, fmt.Sprintf("can't decode provided data: %q", err), http.StatusBadRequest)
 			return
 		}
 
-		err = accrual.ValidateOrder(order.Order)
+		err = models.ValidateOrder(order.Order)
 		if err != nil {
 			http.Error(c.Writer, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		err = store.CreateOrder(createContext, order)
-		if errors.Is(err, accrual.ErrOrderExists) {
+		if errors.Is(err, models.ErrOrderExists) {
 			http.Error(c.Writer, err.Error(), http.StatusConflict)
 			return
 		}
@@ -86,15 +86,15 @@ func updateGoodsHandler(store repository.Storage) gin.HandlerFunc {
 		createContext, createCancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 		defer createCancel()
 
-		var reward accrual.Reward
+		var reward models.Reward
 		err := json.NewDecoder(c.Request.Body).Decode(&reward)
-		if err != nil || errors.Is(accrual.ValidateReward(reward), accrual.ErrBadReward) {
+		if err != nil || errors.Is(models.ValidateReward(reward), models.ErrBadReward) {
 			http.Error(c.Writer, fmt.Sprintf("Cannot decode provided data: %q", err), http.StatusBadRequest)
 			return
 		}
 
 		err = store.CreateReward(createContext, reward)
-		if errors.Is(err, accrual.ErrRewardExists) {
+		if errors.Is(err, models.ErrRewardExists) {
 			http.Error(c.Writer, err.Error(), http.StatusConflict)
 			return
 		}
