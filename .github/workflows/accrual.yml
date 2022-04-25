@@ -14,14 +14,14 @@ jobs:
     container: golang:1.17
 
     env:
-      DATABASE_URI: "postgresql://postgres:mysecret@postgres/accrual?sslmode=disable"
+      DATABASE_URI: "postgresql://postgres:postgres@postgres/praktikum?sslmode=disable"
 
     services:
       postgres:
         image: postgres
         env:
-          POSTGRES_PASSWORD: mysecret
-          POSTGRES_DB: accrual
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: praktikum
         options: >-
           --health-cmd pg_isready
           --health-interval 5s
