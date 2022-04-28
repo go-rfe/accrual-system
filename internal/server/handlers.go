@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	requestTimeout = 1 * time.Second
+	requestTimeout = 3 * time.Second
 )
 
 func getOrderHandler(store repository.Storage) gin.HandlerFunc {
@@ -50,10 +50,11 @@ func getOrderHandler(store repository.Storage) gin.HandlerFunc {
 
 func updateOrdersHandler(store repository.Storage, signal chan struct{}) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		createContext, createCancel := context.WithTimeout(c.Request.Context(), requestTimeout)
-		defer createCancel()
+		ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+		defer cancel()
 
 		var order models.Order
+
 		err := json.NewDecoder(c.Request.Body).Decode(&order)
 		if err != nil {
 			http.Error(c.Writer, fmt.Sprintf("can't decode provided data: %q", err), http.StatusBadRequest)
@@ -66,7 +67,7 @@ func updateOrdersHandler(store repository.Storage, signal chan struct{}) gin.Han
 			return
 		}
 
-		err = store.CreateOrder(createContext, order)
+		err = store.CreateOrder(ctx, order)
 		if errors.Is(err, models.ErrOrderExists) {
 			http.Error(c.Writer, err.Error(), http.StatusConflict)
 			return
@@ -83,8 +84,8 @@ func updateOrdersHandler(store repository.Storage, signal chan struct{}) gin.Han
 
 func updateGoodsHandler(store repository.Storage) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		createContext, createCancel := context.WithTimeout(c.Request.Context(), requestTimeout)
-		defer createCancel()
+		ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+		defer cancel()
 
 		var reward models.Reward
 		err := json.NewDecoder(c.Request.Body).Decode(&reward)
@@ -93,7 +94,7 @@ func updateGoodsHandler(store repository.Storage) gin.HandlerFunc {
 			return
 		}
 
-		err = store.CreateReward(createContext, reward)
+		err = store.CreateReward(ctx, reward)
 		if errors.Is(err, models.ErrRewardExists) {
 			http.Error(c.Writer, err.Error(), http.StatusConflict)
 			return

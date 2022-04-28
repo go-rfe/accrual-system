@@ -11,12 +11,12 @@ type Worker struct {
 	Signal <-chan struct{}
 }
 
-func (pw *Worker) Run(ctx context.Context, s repository.Storage) {
+func (w *Worker) Run(ctx context.Context, s repository.Storage) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-pw.Signal:
+		case <-w.Signal:
 			go UpdateOrder(ctx, s)
 		}
 	}
