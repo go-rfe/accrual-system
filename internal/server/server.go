@@ -1,7 +1,8 @@
 package server
 
 import (
-	repository "accrual-system/internal/repository"
+	"accrual-system/internal/repository"
+	"accrual-system/internal/updater"
 	"context"
 	"net/http"
 
@@ -16,26 +17,34 @@ type AccrualServer struct {
 	DatabaseURI string
 	Storage     repository.Storage
 	Signal      chan struct{}
-	context     context.Context
+	ctx         context.Context
 	server      *http.Server
 }
 
-// initStorage Init database as a storage
+// InitStorage Init database as a storage
 func initStorage(s *AccrualServer) repository.Storage {
-	st, err := repository.NewDBStorage(s.DatabaseURI)
+	log.Debug().Msg("initializing storage")
+	storage, err := repository.NewDBStorage(s.DatabaseURI)
 	if err != nil {
 		log.Error().Msgf("unable to init database: %s", err)
 	}
-	return st
+	return storage
 }
 
 // Run HTTP server main loop
 func (s *AccrualServer) Run(ctx context.Context) {
+	log.Debug().Msg("starting server")
+
 	sCtx, sCancel := context.WithCancel(ctx)
 	defer sCancel()
 
-	s.context = sCtx
-	storage := initStorage(s)
+	s.Storage = initStorage(s)
+	defer func(storage repository.Storage) {
+		err := storage.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("couldn't close database")
+		}
+	}(s.Storage)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
@@ -47,12 +56,12 @@ func (s *AccrualServer) Run(ctx context.Context) {
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	r.Use(realip.RealIP())
 
-	r.GET("/api/orders/:number", limitMiddleware(), getOrderHandler(storage))
-	r.POST("/api/orders", updateOrdersHandler(storage, s.Signal))
-	r.POST("/api/goods", updateGoodsHandler(storage))
+	r.GET("/api/orders/:number", limitMiddleware(), getOrderHandler(s.Storage))
+	r.POST("/api/orders", updateOrdersHandler(s.Storage, s.Signal))
+	r.POST("/api/goods", updateGoodsHandler(s.Storage))
 
-	worker := Worker{Signal: s.Signal}
-	wCtx, wCancel := context.WithCancel(ctx)
+	worker := updater.Worker{Signal: s.Signal}
+	wCtx, wCancel := context.WithCancel(sCtx)
 	go worker.Run(wCtx, s.Storage)
 	defer wCancel()
 

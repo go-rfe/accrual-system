@@ -14,7 +14,7 @@ import (
 const (
 	defaultServerAddr  = "localhost:8080"
 	defaultDatabaseURI = "postgresql://postgres:mysecret@localhost/accrual?sslmode=disable"
-	defaultLogLevel    = "INFO"
+	defaultLogLevel    = "DEBUG"
 )
 
 func GetEnvVar(key string, fallback string) string {
@@ -39,14 +39,15 @@ func main() {
 		DatabaseURI: GetEnvVar("DATABASE_URI", DatabaseURI),
 		Signal:      make(chan struct{}),
 	}
+	log.Debug().Msgf("server address: %v", accrualServer.RunAddress)
+	log.Debug().Msgf("database uri: %v", accrualServer.DatabaseURI)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go accrualServer.Run(ctx)
+	defer cancel()
 
 	osSignal := make(chan os.Signal, 1)
 	signal.Notify(osSignal, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	log.Debug().Msgf("caught %v", <-osSignal)
-
-	cancel()
 	log.Info().Msg("server is stopped")
 }
