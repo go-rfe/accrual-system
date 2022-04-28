@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/shopspring/decimal"
@@ -21,8 +22,10 @@ const (
 type Database struct {
 	conn  *sql.DB
 	cache map[string]models.Reward
+	mux   sync.Mutex
 }
 
+// NewDBStorage Create a new connection to the database
 func NewDBStorage(uri string) (*Database, error) {
 	log.Debug().Msg("creating database connection")
 
@@ -75,6 +78,9 @@ func NewDBStorage(uri string) (*Database, error) {
 		}
 	}(rewardsRows)
 
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
 	for rewardsRows.Next() {
 		var reward models.Reward
 		err = rewardsRows.Scan(&reward.Match, &reward.Reward, &reward.RewardType)
@@ -93,6 +99,7 @@ func NewDBStorage(uri string) (*Database, error) {
 	return &db, nil
 }
 
+// CreateOrder Creates a new order
 func (db *Database) CreateOrder(ctx context.Context, order models.Order) error {
 	var existingOrder string
 	row := db.conn.QueryRowContext(ctx,
@@ -157,6 +164,7 @@ func (db *Database) CreateOrder(ctx context.Context, order models.Order) error {
 	return nil
 }
 
+// GetOrder Fetches order by ID
 func (db *Database) GetOrder(ctx context.Context, orderID string) (*models.Order, error) {
 	var sum decimal.Decimal
 	order := models.Order{}
@@ -180,7 +188,7 @@ func (db *Database) GetOrder(ctx context.Context, orderID string) (*models.Order
 	return &order, nil
 }
 
-// CreateReward creates pattern for goods
+// CreateReward Creates pattern for goods
 func (db *Database) CreateReward(ctx context.Context, reward models.Reward) error {
 	var existingOrder string
 	row := db.conn.QueryRowContext(ctx,
@@ -203,13 +211,17 @@ func (db *Database) CreateReward(ctx context.Context, reward models.Reward) erro
 		return err
 	}
 
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
 	db.cache[reward.Match] = reward
 
 	return nil
 }
 
-// UpdateOrder calculates rewards for the new one order
+// UpdateOrder Calculates rewards for the new order
 func (db *Database) UpdateOrder(ctx context.Context) error {
+	fmt.Println("TEST")
 	order := models.Order{}
 
 	row := db.conn.QueryRowContext(ctx,
@@ -225,7 +237,7 @@ func (db *Database) UpdateOrder(ctx context.Context) error {
 
 	// Start processing order
 	order.Status = models.ProcessingStatus
-	if err := db.updateOrder(ctx, order); err != nil {
+	if err := db.helperUpdateOrder(ctx, order); err != nil {
 		return err
 	}
 
@@ -234,6 +246,7 @@ func (db *Database) UpdateOrder(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	for _, reward := range db.cache {
 		goodsRows, err := stmt.QueryContext(ctx, order.Order, reward.Match)
 		if err != nil {
@@ -270,38 +283,15 @@ func (db *Database) UpdateOrder(ctx context.Context) error {
 		order.Status = models.ProcessedStatus
 	}
 
-	if err := db.updateOrder(ctx, order); err != nil {
+	if err := db.helperUpdateOrder(ctx, order); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// updateOrder updates provided order in database inside transaction
-func (db *Database) updateOrder(ctx context.Context, order models.Order) error {
-	tx, err := db.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	if _, err := tx.ExecContext(ctx,
-		"UPDATE orders SET status = $1, accrual = $2 WHERE number = $3",
-		order.Status, order.Accrual, order.Order); err != nil {
-		if err := tx.Rollback(); err != nil {
-			log.Error().Err(err).Msg("unable to rollback transaction")
-		}
-
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Close closes store database db
+// Close Closes database connection
 func (db *Database) Close() error {
+	log.Info().Msg("database closed")
 	return db.conn.Close()
 }

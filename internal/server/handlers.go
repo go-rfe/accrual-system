@@ -18,7 +18,7 @@ const (
 	requestTimeout = 3 * time.Second
 )
 
-func getOrderHandler(store repository.Storage) gin.HandlerFunc {
+func getOrderHandler(storage repository.Storage) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 		defer cancel()
@@ -29,7 +29,7 @@ func getOrderHandler(store repository.Storage) gin.HandlerFunc {
 			return
 		}
 
-		order, err := store.GetOrder(ctx, orderID)
+		order, err := storage.GetOrder(ctx, orderID)
 		switch {
 		case errors.Is(err, models.ErrOrderDoesntExist):
 			http.Error(c.Writer, "couldn't found order", http.StatusNotFound)
@@ -48,7 +48,7 @@ func getOrderHandler(store repository.Storage) gin.HandlerFunc {
 	}
 }
 
-func updateOrdersHandler(store repository.Storage, signal chan struct{}) gin.HandlerFunc {
+func updateOrdersHandler(storage repository.Storage, signal chan struct{}) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 		defer cancel()
@@ -67,7 +67,7 @@ func updateOrdersHandler(store repository.Storage, signal chan struct{}) gin.Han
 			return
 		}
 
-		err = store.CreateOrder(ctx, order)
+		err = storage.CreateOrder(ctx, order)
 		if errors.Is(err, models.ErrOrderExists) {
 			http.Error(c.Writer, err.Error(), http.StatusConflict)
 			return
@@ -82,7 +82,7 @@ func updateOrdersHandler(store repository.Storage, signal chan struct{}) gin.Han
 	}
 }
 
-func updateGoodsHandler(store repository.Storage) gin.HandlerFunc {
+func updateGoodsHandler(storage repository.Storage) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 		defer cancel()
@@ -94,7 +94,7 @@ func updateGoodsHandler(store repository.Storage) gin.HandlerFunc {
 			return
 		}
 
-		err = store.CreateReward(ctx, reward)
+		err = storage.CreateReward(ctx, reward)
 		if errors.Is(err, models.ErrRewardExists) {
 			http.Error(c.Writer, err.Error(), http.StatusConflict)
 			return
